@@ -2,6 +2,7 @@
 
 require 'rex/socket'
 require 'net/ldap'
+require 'net/ldap/dn'
 
 module Rex
   module Proto
