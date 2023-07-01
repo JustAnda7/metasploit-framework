@@ -2,13 +2,12 @@
 
 require 'rex/socket'
 require 'net/ldap'
-require 'net/ldap/dn'
 
 module Rex
   module Proto
     module LDAP
       class Server
-        attr_reader :serve_udp, :serve_tcp, :sock_options, :udp_sock, :tcp_sock, :syntax, :ldif
+        attr_reader :serve_udp, :serve_tcp, :sock_options, :ssl_opts, :udp_sock, :tcp_sock, :syntax, :ldif
 
         module LdapClient
           attr_accessor :authenticated
@@ -62,7 +61,7 @@ module Rex
         # @param sblock [Proc] Handler for :send_response flow control interception
         #
         # @return [Rex::Proto::LDAP::Server] LDAP Server object
-        def initialize(lhost = '0.0.0.0', lport = 389, udp = true, tcp = true, ldif = nil, comm = nil, ctx = {}, dblock = nil, sblock = nil)
+        def initialize(lhost = '0.0.0.0', lport = 389, udp = true, tcp = true, ssl_opts = {}, ldif = nil, comm = nil, ctx = {}, dblock = nil, sblock = nil)
           @serve_udp = udp
           @serve_tcp = tcp
           @sock_options = {
@@ -71,6 +70,7 @@ module Rex
             'Context' => ctx,
             'Comm' => comm
           }
+          @ssl_opts = ssl_opts
           @ldif = ldif
           self.listener_thread = nil
           self.dispatch_request_proc = dblock
@@ -96,6 +96,9 @@ module Rex
           end
 
           if serve_tcp
+            if @ssl_opts['SSL'] == true
+              sock_options.merge(ssl_opts) # later manage multiple port connection
+            end
             @tcp_sock = Rex::Socket::TcpServer.create(sock_options)
             tcp_sock.on_client_connect_proc = proc do |cli|
               on_client_connect(cli)
@@ -183,8 +186,6 @@ module Rex
                      else
                        service.encode_ldap_response(pdu.message_id, 50, '', 'Not authenticated', Net::LDAP::PDU::SearchResult)
                      end
-                   when Net::LDAP::PDU::UnbindRequest
-                     nil # close client, no response can be sent over unbound comm
                    else
                      service.encode_ldap_response(
                        pdu.message_id,
