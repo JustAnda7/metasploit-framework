@@ -17,19 +17,18 @@ module Rex
         # @param server    [String] Server value used in NTLM
         # @param dnsname   [String] DNS Name value used in NTLM
         # @param dnsdomain [String] DNS Domain value used in NTLM
-        def initialize(challenge = Rex::Text.rand_text_alphanumeric(16), domain  = 'DOMAIN',
-                       server = 'SERVER', dnsname = 'server', dnsdomain = 'example.com')
-          @domain = domain
-          @server = server
-          @dnsname = dnsname
-          @dnsdomain = dnsdomain
-          @challenge = [challenge].pack('H*')
+        def initialize(challenge, domain, server, dnsname, dnsdomain)
+          @domain = domain.nil? ? 'DOMAIN' : domain
+          @server = server.nil? ? 'SERVER' : server
+          @dnsname = dnsname.nil? ? 'server' : dnsname
+          @dnsdomain = dnsdomain.nil? ? 'example.com' : dnsdomain
+          @challenge = [challenge.nil? ? Rex::Text.rand_text_alphanumeric(16) : challenge].pack('H*')
         end
 
         #
         # Process the incoming LDAP login requests from clients
         #
-        # @param user_login [OpennStruct] User login information
+        # @param user_login [OpenStruct] User login information
         #
         # @return auth_info [Hash] Processed authentication information
         def process_login_request(user_login)
@@ -51,9 +50,9 @@ module Rex
         #
         # Handle Anonymous authentication requests
         #
-        # @param user_login [OpennStruct] User login information
+        # @param user_login [OpenStruct] User login information
         # @param auth_info [Hash] Processed authentication information
-        # 
+        #
         # @return auth_info [Hash] Processed authentication information
         def handle_anonymous_request(user_login, auth_info = {})
           if user_login.name.empty? && user_login.authentication.empty?
@@ -70,9 +69,9 @@ module Rex
         #
         # Handle Simple authentication requests
         #
-        # @param user_login [OpennStruct] User login information
+        # @param user_login [OpenStruct] User login information
         # @param auth_info [Hash] Processed authentication information
-        # 
+        #
         # @return auth_info [Hash] Processed authentication information
         def handle_simple_request(user_login, auth_info = {})
           domains = []
@@ -84,7 +83,7 @@ module Rex
                 auth_info[:user], auth_info[:domain] = pub_info
               else
                 auth_info[:result_code] = Net::LDAP::ResultCodeInvalidCredentials
-                auth_info[:result_message] = "LDAP Login Attempt => From:#{auth_info[:name]} DN:#{user_login.name}"
+                auth_info[:error_msg] = "Invalid LDAP Login Attempt => DN:#{user_login.name}"
               end
             elsif user_login.name =~ /,/
               begin
@@ -96,10 +95,10 @@ module Rex
                     domains << value
                   end
                 end
-                auth_info[:user] = names.first
+                auth_info[:user] = names.join('')
                 auth_info[:domain] = domains.empty? ? nil : domains.join('.')
-              rescue InvalidDNError => e
-                auth_info[:result_message] = "LDAP Login Attempt => From:#{auth_info[:name]} DN:#{user_login.name}"
+              rescue Net::LDAP::InvalidDNError => e
+                auth_info[:error_msg] = "Invalid LDAP Login Attempt => DN:#{user_login.name}"
                 raise e
               end
             elsif user_login.name =~ /\\/
@@ -108,7 +107,7 @@ module Rex
                 auth_info[:domain], auth_info[:user] = pub_info
               else
                 auth_info[:result_code] = Net::LDAP::ResultCodeInvalidCredentials
-                auth_info[:result_message] = "LDAP Login Attempt => From:#{auth_info[:name]} DN:#{user_login.name}"
+                auth_info[:error_msg] = "Invalid LDAP Login Attempt => DN:#{user_login.name}"
               end
             else
               auth_info[:user] = user_login.name
@@ -118,7 +117,7 @@ module Rex
             auth_info[:private] = user_login.authentication
             auth_info[:private_type] = :password
             auth_info[:result_code] = Net::LDAP::ResultCodeAuthMethodNotSupported if auth_info[:result_code].nil?
-            auth_info[:auth_info] = 'Simple'
+            auth_info[:auth_type] = 'Simple'
             auth_info
           end
         end
@@ -126,9 +125,9 @@ module Rex
         #
         # Handle SASL authentication requests
         #
-        # @param user_login [OpennStruct] User login information
+        # @param user_login [OpenStruct] User login information
         # @param auth_info [Hash] Processed authentication information
-        # 
+        #
         # @return auth_info [Hash] Processed authentication information
         def handle_sasl_request(user_login, auth_info = {})
           if user_login.authentication[1] =~ /NTLMSSP/
@@ -153,7 +152,7 @@ module Rex
         # Generate NTLM Type2 response from NTLM Type1 message
         #
         # @param message [String] NTLM Type1 message
-        # 
+        #
         # @return server_hash [String] NTLM Type2 response
         def generate_type2_response(message)
           dom, ws = parse_type1_domain(message)
@@ -173,7 +172,7 @@ module Rex
         #
         # @param message [String] NTLM Type3 message
         # @param auth_info [Hash] Processed authentication information
-        # 
+        #
         # @return auth_info [Hash] Processed authentication information
         def handle_type3_message(message, auth_info = {})
           arg = {}
@@ -218,7 +217,7 @@ module Rex
         # Process the NTLM Hash received from NTLM Type3 message
         #
         # @param arg [Hash] authentication information received from Type3 message
-        # 
+        #
         # @return arg [Hash] Processed NTLM authentication information
         def process_ntlm_hash(arg = {})
           ntlm_ver = arg[:ntlm_ver]
@@ -235,22 +234,22 @@ module Rex
           case ntlm_ver
           when NTLM_CONST::NTLM_V1_RESPONSE
             if NTLM_CRYPT.is_hash_from_empty_pwd?({
-              hash: [nt_hash].pack('H*'),
-              srv_challenge: @challenge,
-              ntlm_ver: NTLM_CONST::NTLM_V1_RESPONSE,
-              type: 'ntlm'
-            })
+                                                    hash: [nt_hash].pack('H*'),
+                                                    srv_challenge: @challenge,
+                                                    ntlm_ver: NTLM_CONST::NTLM_V1_RESPONSE,
+                                                    type: 'ntlm'
+                                                  })
               arg[:error_msg] = 'NLMv1 Hash correspond to an empty password, ignoring ... '
               return
             end
             if lm_hash == nt_hash || lm_hash == '' || lm_hash =~ /^0*$/
               lm_hash_message = 'Disabled'
             elsif NTLM_CRYPT.is_hash_from_empty_pwd?({
-              hash: [lm_hash].pack('H*'),
-              srv_challenge: @challenge,
-              ntlm_ver: NTLM_CONST::NTLM_V1_RESPONSE,
-              type: 'lm'
-            })
+                                                       hash: [lm_hash].pack('H*'),
+                                                       srv_challenge: @challenge,
+                                                       ntlm_ver: NTLM_CONST::NTLM_V1_RESPONSE,
+                                                       type: 'lm'
+                                                     })
               lm_hash_message = 'Disabled (from empty password)'
             else
               lm_hash_message = lm_hash
@@ -263,28 +262,28 @@ module Rex
             arg[:private] = hash
           when NTLM_CONST::NTLM_V2_RESPONSE
             if NTLM_CRYPT.is_hash_from_empty_pwd?({
-              hash: [nt_hash].pack('H*'),
-              srv_challenge: @challenge,
-              cli_challenge: [nt_cli_challenge].pack('H*'),
-              user: user,
-              domain: domain,
-              ntlm_ver: NTLM_CONST::NTLM_V2_RESPONSE,
-              type: 'ntlm'
-            })
+                                                    hash: [nt_hash].pack('H*'),
+                                                    srv_challenge: @challenge,
+                                                    cli_challenge: [nt_cli_challenge].pack('H*'),
+                                                    user: user,
+                                                    domain: domain,
+                                                    ntlm_ver: NTLM_CONST::NTLM_V2_RESPONSE,
+                                                    type: 'ntlm'
+                                                  })
               arg[:error_msg] = 'NTLMv2 Hash correspond to an empty password, ignoring ... '
               return
             end
             if (lm_hash == '0' * 32) && (lm_cli_challenge == '0' * 16)
               lm_hash_message = 'Disabled'
             elsif NTLM_CRYPT.is_hash_from_empty_pwd?({
-              hash: [lm_hash].pack('H*'),
-              srv_challenge: @challenge,
-              cli_challenge: [lm_cli_challenge].pack('H*'),
-              user: user,
-              domain: domain,
-              ntlm_ver: NTLM_CONST::NTLM_V2_RESPONSE,
-              type: 'lm'
-            })
+                                                       hash: [lm_hash].pack('H*'),
+                                                       srv_challenge: @challenge,
+                                                       cli_challenge: [lm_cli_challenge].pack('H*'),
+                                                       user: user,
+                                                       domain: domain,
+                                                       ntlm_ver: NTLM_CONST::NTLM_V2_RESPONSE,
+                                                       type: 'lm'
+                                                     })
               lm_hash_message = 'Disabled (from empty password)'
             else
               lm_hash_message = lm_hash
@@ -297,12 +296,12 @@ module Rex
             arg[:private] = hash
           when NTLM_CONST::NTLM_2_SESSION_RESPONSE
             if NTLM_CRYPT.is_hash_from_empty_pwd?({
-              hash: [nt_hash].pack('H*'),
-              srv_challenge: @challenge,
-              cli_challenge: [lm_hash].pack('H*')[0, 8],
-              ntlm_ver: NTLM_CONST::NTLM_2_SESSION_RESPONSE,
-              type: 'ntlm'
-            })
+                                                    hash: [nt_hash].pack('H*'),
+                                                    srv_challenge: @challenge,
+                                                    cli_challenge: [lm_hash].pack('H*')[0, 8],
+                                                    ntlm_ver: NTLM_CONST::NTLM_2_SESSION_RESPONSE,
+                                                    type: 'ntlm'
+                                                  })
               arg[:error_msg] = 'NTLM2_session Hash correspond to an empty password, ignoring ... '
               return
             end
