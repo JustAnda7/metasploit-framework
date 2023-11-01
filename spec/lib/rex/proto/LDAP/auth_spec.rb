@@ -26,7 +26,7 @@ RSpec.describe Rex::Proto::LDAP::Auth do
 
   let(:user_login) { OpenStruct.new }
   let(:ntlm_type1) do
-    type1 = "0K\x02\x01\x01`F\x02\x01\x03\x04\x00\xA3?\x04\nGSS-SPNEGO\x041NTLMSSP\x00\x01\x00\x00\x00\x05\x82\x88B\x06\x00\x06\x00 \x00\x00\x00\v\x00\v\x00&\x00\x00\x00DOMAINWORKSTATION".read_ber!(Net::LDAP::AsnSyntax)
+    type1 = "0K\x02\x01\x01`F\x02\x01\x03\x04\x00\xA3?\x04\nGSS-SPNEGO\x041NTLMSSP\x00\x01\x00\x00\x00\x05\x82\x88B\x06\x00\x06\x00 \x00\x00\x00\v\x00\v\x00&\x00\x00\x00DOMAINWORKSTATION".read_ber(Net::LDAP::AsnSyntax)
     pdu = Net::LDAP::PDU.new(type1)
     pdu.bind_parameters
   end
