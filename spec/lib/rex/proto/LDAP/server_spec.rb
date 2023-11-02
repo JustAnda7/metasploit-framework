@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+require 'rex/text'
 
 RSpec.describe Rex::Proto::LDAP::Server do
 
@@ -13,6 +14,12 @@ RSpec.describe Rex::Proto::LDAP::Server do
   end
 
   let(:response) {}
+
+  before do
+    server.processed_pdu_handler(Net::LDAP::PDU::BindRequest) do |processed_data|
+      processed_data = 'Processed Data'
+    end
+  end
 
   context 'initialize' do
     it 'sets the server options correctly' do
@@ -93,10 +100,10 @@ RSpec.describe Rex::Proto::LDAP::Server do
       client = double('client')
       allow(client).to receive(:peerhost) { '1.1.1.1' }
       allow(client).to receive(:peerport) { '389' }
-      allow(client).to receive(:write).with(response)
+      allow(client).to receive(:write).with(any_args)
       allow(client).to receive(:close)
 
-      expect { server.dispatch_request(client, "02\x02\x01\x01`-\x02\x01\x03\x04\"cn=user,sn=admin,dc=example,dc=com\x80\x04kali") }.not_to raise_error
+      expect { server.dispatch_request(client, String.new("02\x02\x01\x01`-\x02\x01\x03\x04\"cn=user,dc=example,dc=com\x80\x04kali")) }.not_to raise_error
     end
   end
 
@@ -105,7 +112,7 @@ RSpec.describe Rex::Proto::LDAP::Server do
       client = double('client')
       allow(client).to receive(:peerhost) { '1.1.1.1' }
       allow(client).to receive(:peerport) { '389' }
-      allow(client).to receive(:write).with(response)
+      allow(client).to receive(:write).with(any_args)
       allow(client).to receive(:close)
       data = ''
       expect { server.default_dispatch_request(client, data) }.not_to raise_error
@@ -139,9 +146,6 @@ RSpec.describe Rex::Proto::LDAP::Server do
 
   describe '#processed_pdu_handler' do
     it 'sets the processed_pdu_handler correctly' do
-      server.processed_pdu_handler(Net::LDAP::PDU::BindRequest) do |processed_data|
-        processed_data = 'Processed Data'
-      end
 
       expect(server.instance_variable_get(:@pdu_process)[Net::LDAP::PDU::BindRequest]).to be_a(Proc)
       expect((server.instance_variable_get(:@pdu_process)[Net::LDAP::PDU::BindRequest]).call({})).to eq('Processed Data')

@@ -31,7 +31,7 @@ RSpec.describe Rex::Proto::LDAP::Auth do
     pdu.bind_parameters
   end
   let(:ntlm_type3) do
-    pdu = Net::LDAP::PDU.new(@type3.read_ber!(Net::LDAP::AsnSyntax))
+    pdu = Net::LDAP::PDU.new(@type3.read_ber(Net::LDAP::AsnSyntax))
     pdu.bind_parameters
   end
 
@@ -182,7 +182,8 @@ RSpec.describe Rex::Proto::LDAP::Auth do
   context 'private methods' do
     context '#generate_type2_response' do
       it 'returns a valid NTLM Type2 message from NTLM Type1 message' do
-        result = parameter_auth.send(:generate_type2_response, ntlm_type1)
+        message = Net::NTLM::Message.parse(ntlm_type1.authentication[1])
+        result = parameter_auth.send(:generate_type2_response, message)
 
         expect(result).to be_a(String)
       end
@@ -190,8 +191,8 @@ RSpec.describe Rex::Proto::LDAP::Auth do
 
     context '#handle_type3_message' do
       it 'handles NTLM Type3 message and returns the expected authentication information' do
-
-        result = parameter_auth.send(:handle_type3_message, ntlm_type3)
+        message = Net::NTLM::Message.parse(ntlm_type3.authentication[1])
+        result = parameter_auth.send(:handle_type3_message, message)
 
         expect(result[:domain]).to eq('DOMAIN')
         expect(result[:user]).to eq('User')
@@ -224,16 +225,6 @@ RSpec.describe Rex::Proto::LDAP::Auth do
         expect(result[:private]).not_to be_nil
         expect(result[:private_type]).to eq(:ntlm_hash)
         expect(result[:ntlm_ver]).not_to be_nil
-      end
-    end
-
-    context '#parse_type1_domain' do
-      it 'parses NTLM Type1 message and returns domain and workstation information' do
-
-        domain, workstation = parameter_auth.send(:parse_type1_domain, ntlm_type1)
-
-        expect(domain).to be_nil
-        expect(workstation).to be_nil
       end
     end
   end
