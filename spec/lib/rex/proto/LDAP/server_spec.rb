@@ -103,7 +103,7 @@ RSpec.describe Rex::Proto::LDAP::Server do
       allow(client).to receive(:write).with(any_args)
       allow(client).to receive(:close)
 
-      expect { server.dispatch_request(client, String.new("02\x02\x01\x01`-\x02\x01\x03\x04\"cn=user,dc=example,dc=com\x80\x04kali")) }.not_to raise_error
+      expect { server.dispatch_request(client, String.new("02\x02\x01\x01`-\x02\x01\x03\x04\"cn=user,dc=example,dc=com\x80\x04kali").force_encoding('ASCII-8BIT')) }.not_to raise_error
     end
   end
 
